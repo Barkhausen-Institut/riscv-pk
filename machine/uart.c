@@ -63,11 +63,11 @@ static void uart_done(const struct fdt_scan_node *node, void *extra)
   uart[UART_REG_RXCTRL] = UART_RXEN;
 
   // set divisor for sifive uart
-  if (scan->compat) {
-    // core runs with 80 MHz and we use 115200 baud
-    uint16_t div = ((80000000 + 115200 - 1) / 115200) - 1;
-    uart[UART_REG_DIV] = div;
-  }
+  // if (scan->compat) {
+  //   // core runs with 80 MHz and we use 115200 baud
+  //   uint16_t div = ((80000000 + 115200 - 1) / 115200) - 1;
+  //   uart[UART_REG_DIV] = div;
+  // }
 }
 
 void query_uart(uintptr_t fdt)
