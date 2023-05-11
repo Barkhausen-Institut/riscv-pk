@@ -52,9 +52,9 @@ static void filter_dtb(uintptr_t source)
 
 static void protect_memory(void)
 {
-  // Check to see if up to four PMP registers are implemented.
+  // Check to see if up to six PMP registers are implemented.
   // Ignore the illegal-instruction trap if PMPs aren't supported.
-  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, tmp, cfg;
+  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, tmp, cfg;
   asm volatile ("la %[tmp], 1f\n\t"
                 "csrrw %[tmp], mtvec, %[tmp]\n\t"
                 "csrw pmpaddr0, %[m1]\n\t"
@@ -65,14 +65,19 @@ static void protect_memory(void)
                 "csrr %[a2], pmpaddr2\n\t"
                 "csrw pmpaddr3, %[m1]\n\t"
                 "csrr %[a3], pmpaddr3\n\t"
+                "csrw pmpaddr4, %[m1]\n\t"
+                "csrr %[a4], pmpaddr4\n\t"
+                "csrw pmpaddr5, %[m1]\n\t"
+                "csrr %[a5], pmpaddr5\n\t"
                 ".align 2\n\t"
                 "1: csrw mtvec, %[tmp]"
                 : [tmp] "=&r" (tmp),
-                  [a0] "+r" (a0), [a1] "+r" (a1), [a2] "+r" (a2), [a3] "+r" (a3)
+                  [a0] "+r" (a0), [a1] "+r" (a1), [a2] "+r" (a2),
+                  [a3] "+r" (a3), [a4] "+r" (a4), [a5] "+r" (a5)
                 : [m1] "r" (-1UL));
 
-  // We need at least four PMP registers to protect M-mode from S-mode.
-  if (!(a0 & a1 & a2 & a3))
+  // We need at least six PMP registers to protect M-mode from S-mode.
+  if (!(a0 & a1 & a2 & a3 & a4 & a5))
     return setup_pmp();
 
   // Prevent S-mode access to our part of memory.
@@ -80,19 +85,28 @@ static void protect_memory(void)
   a0 = (uintptr_t)&_ftext >> PMP_SHIFT;
   a1 = (uintptr_t)&_end >> PMP_SHIFT;
   cfg = PMP_TOR << 8;
-  // Give S-mode free rein of everything else.
-  a2 = -1;
-  cfg |= (PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 16;
-  // No use for PMP 3 just yet.
-  a3 = 0;
+  // Give S-mode access to the first GB.
+  cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 16;
+  a2 = (0x40000000 >> 2) - 1;
+  // and to the TCU's MMIO region
+  cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 24;
+  a3 = (0xF0000000 >> 2) | ((0x4000 - 1) >> 2);
+  // and to the AXI ethernet device
+  cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 32;
+  a4 = (0xF4000000 >> 2) | ((0x80000 - 1) >> 2);
+  // No use for PMP 5 just yet.
+  a5 = 0;
 
   // Plug it all in.
   asm volatile ("csrw pmpaddr0, %[a0]\n\t"
                 "csrw pmpaddr1, %[a1]\n\t"
                 "csrw pmpaddr2, %[a2]\n\t"
                 "csrw pmpaddr3, %[a3]\n\t"
+                "csrw pmpaddr4, %[a4]\n\t"
+                "csrw pmpaddr5, %[a5]\n\t"
                 "csrw pmpcfg0, %[cfg]"
-                :: [a0] "r" (a0), [a1] "r" (a1), [a2] "r" (a2), [a3] "r" (a3),
+                :: [a0] "r" (a0), [a1] "r" (a1), [a2] "r" (a2),
+                   [a3] "r" (a3), [a4] "r" (a4), [a5] "r" (a5),
                    [cfg] "r" (cfg));
 }
 
