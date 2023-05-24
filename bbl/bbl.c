@@ -85,9 +85,9 @@ static void protect_memory(void)
   a0 = (uintptr_t)&_ftext >> PMP_SHIFT;
   a1 = (uintptr_t)&_end >> PMP_SHIFT;
   cfg = PMP_TOR << 8;
-  // Give S-mode access to the first GB.
+  // Give S-mode access to 512 MB of memory.
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 16;
-  a2 = (0x40000000 >> 2) - 1;
+  a2 = (0x20000000 >> 2) - 1;
   // and to the TCU's MMIO region
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 24;
   a3 = (0xF0000000 >> 2) | ((0x4000 - 1) >> 2);
