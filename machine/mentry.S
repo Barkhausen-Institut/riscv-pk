@@ -284,6 +284,10 @@ do_reset:
 #ifdef CUSTOM_DTS
   csrr a0, mhartid
   la a1, dtb_start
+#else
+  csrr a0, mhartid
+  # hardcoded location to pass the DTB at runtime but without having to set a1
+  li a1, 0x101FF000
 #endif
   j init_first_hart
 
