@@ -6,9 +6,57 @@
 
 volatile uint32_t* uart;
 
+// this serial driver is only used on hw
+
+#define TCU_PRINT 1
+#define MMIO_UNPRIV_ADDR 0xf0000000
+#define TOTAL_EPS 128
+#define EXT_REGS 2
+#define UNPRIV_REGS 6
+#define EP_REGS 3
+#define PRINT_REGS 32
+#define UNPRIV_REG_TIME 0x4
+#define UNPRIV_REG_PRINT 0x5
+
+typedef unsigned long long Reg;
+
+static inline void write_unpriv_reg(unsigned int index, Reg val)
+{
+  *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index) = val;
+}
+
+static inline Reg read_unpriv_reg(unsigned int index)
+{
+  return *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index);
+}
+
+static void tcu_putchar(uint8_t c)
+{
+  static uint64_t last_putchar = 0;
+  size_t regCount;
+  volatile Reg *buffer;
+
+  regCount = EXT_REGS + UNPRIV_REGS + TOTAL_EPS * EP_REGS;
+  buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
+  *buffer = c;
+
+  // limit the UDP packet rate a bit to avoid packet drops
+  while((read_unpriv_reg(UNPRIV_REG_TIME) - last_putchar) < 100000)
+    ;
+  last_putchar = read_unpriv_reg(UNPRIV_REG_TIME);
+
+  write_unpriv_reg(UNPRIV_REG_PRINT, 1);
+  // wait until the print was carried out
+  while(read_unpriv_reg(UNPRIV_REG_PRINT) != 0)
+    ;
+}
+
 void uart_putchar(uint8_t ch)
 {
-#ifdef __riscv_atomic
+#ifdef TCU_PRINT
+    tcu_putchar(ch);
+#else
+# ifdef __riscv_atomic
     int32_t r;
     do {
       __asm__ __volatile__ (
@@ -16,10 +64,11 @@ void uart_putchar(uint8_t ch)
         : "=r" (r), "+A" (uart[UART_REG_TXFIFO])
         : "r" (ch));
     } while (r < 0);
-#else
+# else
     volatile uint32_t *tx = uart + UART_REG_TXFIFO;
     while ((int32_t)(*tx) < 0);
     *tx = ch;
+# endif
 #endif
 }
 
