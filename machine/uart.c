@@ -6,11 +6,9 @@
 
 volatile uint32_t* uart;
 
-// this serial driver is only used on hw
-
-#define TCU_PRINT 1
+#define ENV_START 0x10001000
 #define MMIO_UNPRIV_ADDR 0xf0000000
-#define TOTAL_EPS 128
+#define TOTAL_EPS (is_gem5() ? 192 : 128)
 #define EXT_REGS 2
 #define UNPRIV_REGS 6
 #define EP_REGS 3
@@ -30,7 +28,12 @@ static inline Reg read_unpriv_reg(unsigned int index)
   return *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index);
 }
 
-static void tcu_putchar(uint8_t c)
+static inline int is_gem5()
+{
+  return *((uint64_t*)ENV_START) == 0;
+}
+
+void tcu_putchar(uint8_t c)
 {
   static uint64_t last_putchar = 0;
   size_t regCount;
@@ -41,9 +44,12 @@ static void tcu_putchar(uint8_t c)
   *buffer = c;
 
   // limit the UDP packet rate a bit to avoid packet drops
-  while((read_unpriv_reg(UNPRIV_REG_TIME) - last_putchar) < 100000)
-    ;
-  last_putchar = read_unpriv_reg(UNPRIV_REG_TIME);
+  if(!is_gem5())
+  {
+    while((read_unpriv_reg(UNPRIV_REG_TIME) - last_putchar) < 100000)
+      ;
+    last_putchar = read_unpriv_reg(UNPRIV_REG_TIME);
+  }
 
   write_unpriv_reg(UNPRIV_REG_PRINT, 1);
   // wait until the print was carried out

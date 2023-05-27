@@ -1,6 +1,7 @@
 // See LICENSE for license details.
 
 #include <string.h>
+#include "uart.h"
 #include "uart_gem5.h"
 #include "fdt.h"
 
@@ -8,6 +9,10 @@ int uart_gem5;
 
 void uart_gem5_putchar(uint8_t c)
 {
+#ifdef TCU_PRINT
+    tcu_putchar(c);
+#endif
+
     char str[] = {c};
     register size_t a0 asm("a0") = (size_t)str;
     register size_t a1 asm("a1") = 1;
