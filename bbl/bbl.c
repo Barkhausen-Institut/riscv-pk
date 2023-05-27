@@ -52,9 +52,9 @@ static void filter_dtb(uintptr_t source)
 
 static void protect_memory(void)
 {
-  // Check to see if up to six PMP registers are implemented.
+  // Check to see if up to seven PMP registers are implemented.
   // Ignore the illegal-instruction trap if PMPs aren't supported.
-  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, tmp, cfg;
+  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, tmp, cfg;
   asm volatile ("la %[tmp], 1f\n\t"
                 "csrrw %[tmp], mtvec, %[tmp]\n\t"
                 "csrw pmpaddr0, %[m1]\n\t"
@@ -69,15 +69,18 @@ static void protect_memory(void)
                 "csrr %[a4], pmpaddr4\n\t"
                 "csrw pmpaddr5, %[m1]\n\t"
                 "csrr %[a5], pmpaddr5\n\t"
+                "csrw pmpaddr6, %[m1]\n\t"
+                "csrr %[a6], pmpaddr6\n\t"
                 ".align 2\n\t"
                 "1: csrw mtvec, %[tmp]"
                 : [tmp] "=&r" (tmp),
                   [a0] "+r" (a0), [a1] "+r" (a1), [a2] "+r" (a2),
-                  [a3] "+r" (a3), [a4] "+r" (a4), [a5] "+r" (a5)
+                  [a3] "+r" (a3), [a4] "+r" (a4), [a5] "+r" (a5),
+                  [a6] "+r" (a6)
                 : [m1] "r" (-1UL));
 
-  // We need at least six PMP registers to protect M-mode from S-mode.
-  if (!(a0 & a1 & a2 & a3 & a4 & a5))
+  // We need at least seven PMP registers to protect M-mode from S-mode.
+  if (!(a0 & a1 & a2 & a3 & a4 & a5 & a6))
     return setup_pmp();
 
   // Prevent S-mode access to our part of memory.
@@ -85,17 +88,20 @@ static void protect_memory(void)
   a0 = (uintptr_t)&_ftext >> PMP_SHIFT;
   a1 = (uintptr_t)&_end >> PMP_SHIFT;
   cfg = PMP_TOR << 8;
-  // Give S-mode access to 512 MB of memory.
+  // Give S-mode access to the device area
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 16;
-  a2 = (0x20000000 >> 2) - 1;
-  // and to the TCU's MMIO region
+  a2 = (0x10000000 >> 2) - 1;
+  // and to the configured memory size
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 24;
-  a3 = (0xF0000000 >> 2) | ((0x4000 - 1) >> 2);
-  // and to the AXI ethernet device
+  a3 = (0x10000000 >> 2) | ((mem_size >> 2) - 1);
+  // and to the TCU's MMIO region
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 32;
-  a4 = (0xF4000000 >> 2) | ((0x80000 - 1) >> 2);
-  // No use for PMP 5 just yet.
-  a5 = 0;
+  a4 = (0xF0000000 >> 2) | ((0x4000 - 1) >> 2);
+  // and to the AXI ethernet device
+  cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 40;
+  a5 = (0xF4000000 >> 2) | ((0x80000 - 1) >> 2);
+  // No use for PMP 6 just yet.
+  a6 = 0;
 
   // Plug it all in.
   asm volatile ("csrw pmpaddr0, %[a0]\n\t"
@@ -104,10 +110,11 @@ static void protect_memory(void)
                 "csrw pmpaddr3, %[a3]\n\t"
                 "csrw pmpaddr4, %[a4]\n\t"
                 "csrw pmpaddr5, %[a5]\n\t"
+                "csrw pmpaddr6, %[a6]\n\t"
                 "csrw pmpcfg0, %[cfg]"
                 :: [a0] "r" (a0), [a1] "r" (a1), [a2] "r" (a2),
                    [a3] "r" (a3), [a4] "r" (a4), [a5] "r" (a5),
-                   [cfg] "r" (cfg));
+                   [a6] "r" (a6), [cfg] "r" (cfg));
 }
 
 void boot_other_hart(uintptr_t unused __attribute__((unused)))
