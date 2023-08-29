@@ -9,7 +9,7 @@ volatile uint32_t* uart;
 #define ENV_START 0x10001000
 #define MMIO_UNPRIV_ADDR 0xf0000000
 #define TOTAL_EPS (is_gem5() ? 192 : 128)
-#define EXT_REGS 2
+#define EXT_REGS 3
 #define UNPRIV_REGS 6
 #define EP_REGS 3
 #define PRINT_REGS 32
