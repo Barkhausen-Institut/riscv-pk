@@ -54,7 +54,7 @@ static void protect_memory(void)
 {
   // Check to see if up to seven PMP registers are implemented.
   // Ignore the illegal-instruction trap if PMPs aren't supported.
-  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, tmp, cfg;
+  uintptr_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0, tmp, cfg;
   asm volatile ("la %[tmp], 1f\n\t"
                 "csrrw %[tmp], mtvec, %[tmp]\n\t"
                 "csrw pmpaddr0, %[m1]\n\t"
@@ -71,16 +71,18 @@ static void protect_memory(void)
                 "csrr %[a5], pmpaddr5\n\t"
                 "csrw pmpaddr6, %[m1]\n\t"
                 "csrr %[a6], pmpaddr6\n\t"
+                "csrw pmpaddr7, %[m1]\n\t"
+                "csrr %[a7], pmpaddr7\n\t"
                 ".align 2\n\t"
                 "1: csrw mtvec, %[tmp]"
                 : [tmp] "=&r" (tmp),
                   [a0] "+r" (a0), [a1] "+r" (a1), [a2] "+r" (a2),
                   [a3] "+r" (a3), [a4] "+r" (a4), [a5] "+r" (a5),
-                  [a6] "+r" (a6)
+                  [a6] "+r" (a6), [a7] "+r" (a7)
                 : [m1] "r" (-1UL));
 
   // We need at least seven PMP registers to protect M-mode from S-mode.
-  if (!(a0 & a1 & a2 & a3 & a4 & a5 & a6))
+  if (!(a0 & a1 & a2 & a3 & a4 & a5 & a6 & a7))
     return setup_pmp();
 
   // Prevent S-mode access to our part of memory.
@@ -100,8 +102,13 @@ static void protect_memory(void)
   // and to the AXI ethernet device
   cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 40;
   a5 = (0xF4000000 >> 2) | ((0x80000 - 1) >> 2);
+  // one additional memory area
+  cfg |= (uintptr_t)(PMP_NAPOT | PMP_R | PMP_W | PMP_X) << 48;
+  // TODO temporary; what other physical regions are required is actual not known statically. since
+  // this is just a debugging feature, it should be fine though.
+  a6 = (0x50000000 >> 2) | ((0x10000000 - 1) >> 2);
   // No use for PMP 6 just yet.
-  a6 = 0;
+  a7 = 0;
 
   // Plug it all in.
   asm volatile ("csrw pmpaddr0, %[a0]\n\t"
@@ -111,10 +118,11 @@ static void protect_memory(void)
                 "csrw pmpaddr4, %[a4]\n\t"
                 "csrw pmpaddr5, %[a5]\n\t"
                 "csrw pmpaddr6, %[a6]\n\t"
+                "csrw pmpaddr7, %[a7]\n\t"
                 "csrw pmpcfg0, %[cfg]"
                 :: [a0] "r" (a0), [a1] "r" (a1), [a2] "r" (a2),
                    [a3] "r" (a3), [a4] "r" (a4), [a5] "r" (a5),
-                   [a6] "r" (a6), [cfg] "r" (cfg));
+                   [a6] "r" (a6), [a7] "r" (a7), [cfg] "r" (cfg));
 }
 
 void boot_other_hart(uintptr_t unused __attribute__((unused)))
