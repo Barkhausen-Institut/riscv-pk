@@ -9,19 +9,7 @@ int uart_gem5;
 
 void uart_gem5_putchar(uint8_t c)
 {
-#ifdef TCU_PRINT
-    tcu_putchar(c);
-#endif
-
-    char str[] = {c};
-    register size_t a0 asm("a0") = (size_t)str;
-    register size_t a1 asm("a1") = 1;
-    register size_t a2 asm("a2") = 0;
-    register size_t a3 asm("a3") = (size_t)"stdout";
-    asm volatile (
-        ".long 0x9E00007B"
-        : : "r"(a0), "r"(a1), "r"(a2), "r"(a3) : "memory"
-    );
+    uart_putchar(c);
 }
 
 int uart_gem5_getchar()

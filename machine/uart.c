@@ -1,5 +1,6 @@
 // See LICENSE for license details.
 
+#include <stdio.h>
 #include <string.h>
 #include "uart.h"
 #include "fdt.h"
@@ -57,7 +58,7 @@ void tcu_putchar(uint8_t c)
     ;
 }
 
-void uart_putchar(uint8_t ch)
+static void do_uart_putchar(uint8_t ch)
 {
 #ifdef TCU_PRINT
     tcu_putchar(ch);
@@ -76,6 +77,36 @@ void uart_putchar(uint8_t ch)
     *tx = ch;
 # endif
 #endif
+}
+
+void uart_putchar(uint8_t ch)
+{
+    static int is_new_line = 1;
+    static int initialized = 0;
+    static char prefix[32];
+    if(!initialized) {
+      uint64_t tile_id = ((uint64_t*)ENV_START)[1];
+      int tile = tile_id & 0xFF;
+      int chip = tile_id >> 8;
+      // the 0 is hardcoded here due to the limitations of bbl's snprintf implementation; but we
+      // mostly run it on the FPGA where we just have 8 tiles so that it should be fine.
+      snprintf(prefix, sizeof(prefix), "(Lx@C%dT0%d) ", chip, tile);
+      initialized = 1;
+    }
+
+    if(is_new_line) {
+      const char *p = prefix;
+      while(*p) {
+        do_uart_putchar(*p);
+        p++;
+      }
+      is_new_line = 0;
+    }
+
+    do_uart_putchar(ch);
+
+    if(ch == '\n')
+      is_new_line = 1;
 }
 
 int uart_getchar()
