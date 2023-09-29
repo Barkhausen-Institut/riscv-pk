@@ -19,6 +19,9 @@ volatile uint32_t* uart;
 
 typedef unsigned long long Reg;
 
+static int buffering = 1;
+static uint64_t last_putchar = 0;
+
 static inline void write_unpriv_reg(unsigned int index, Reg val)
 {
   *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index) = val;
@@ -34,9 +37,60 @@ static inline int is_gem5()
   return *((uint64_t*)ENV_START) == 0;
 }
 
+static void tcu_puts(const char *str, size_t len)
+{
+  // make sure the string is aligned for the 8-byte accesses below
+  static __attribute__((
+    aligned(8))) char aligned_buf[PRINT_REGS * sizeof(Reg)];
+
+  const char *aligned_str;
+  size_t regCount;
+  volatile Reg *buffer;
+  const Reg *rstr, *end;
+
+  len = len < PRINT_REGS * sizeof(Reg) - 1 ? len : PRINT_REGS * sizeof(Reg) - 1;
+
+  aligned_str = str;
+  if ((uintptr_t)aligned_str & 7) {
+    memcpy(aligned_buf, str, len);
+    aligned_str = aligned_buf;
+  }
+
+  regCount = EXT_REGS + UNPRIV_REGS + TOTAL_EPS * EP_REGS;
+  buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
+  rstr = (const Reg *)(aligned_str);
+  end = (const Reg *)(aligned_str + len);
+  while (rstr < end) {
+    *buffer = *rstr;
+    buffer++;
+    rstr++;
+  }
+
+  // limit the UDP packet rate a bit to avoid packet drops
+  if(!is_gem5()) {
+    while((read_unpriv_reg(UNPRIV_REG_TIME) - last_putchar) < 100000)
+      ;
+    last_putchar = read_unpriv_reg(UNPRIV_REG_TIME);
+  }
+  else {
+    register size_t a0 asm("a0") = (size_t)str;
+    register size_t a1 asm("a1") = len;
+    register size_t a2 asm("a2") = 0;
+    register size_t a3 asm("a3") = (size_t)"stdout";
+    asm volatile (
+        ".long 0x9E00007B"
+        : : "r"(a0), "r"(a1), "r"(a2), "r"(a3) : "memory"
+    );
+  }
+
+  write_unpriv_reg(UNPRIV_REG_PRINT, len);
+  // wait until the print was carried out
+  while (read_unpriv_reg(UNPRIV_REG_PRINT) != 0)
+    ;
+}
+
 void tcu_putchar(uint8_t c)
 {
-  static uint64_t last_putchar = 0;
   size_t regCount;
   volatile Reg *buffer;
 
@@ -45,8 +99,7 @@ void tcu_putchar(uint8_t c)
   *buffer = c;
 
   // limit the UDP packet rate a bit to avoid packet drops
-  if(!is_gem5())
-  {
+  if(!is_gem5()) {
     while((read_unpriv_reg(UNPRIV_REG_TIME) - last_putchar) < 100000)
       ;
     last_putchar = read_unpriv_reg(UNPRIV_REG_TIME);
@@ -84,6 +137,8 @@ void uart_putchar(uint8_t ch)
     static int is_new_line = 1;
     static int initialized = 0;
     static char prefix[32];
+    static char buffer[256];
+    static size_t bufpos = 0;
     if(!initialized) {
       uint64_t tile_id = ((uint64_t*)ENV_START)[1];
       int tile = tile_id & 0xFF;
@@ -96,14 +151,26 @@ void uart_putchar(uint8_t ch)
 
     if(is_new_line) {
       const char *p = prefix;
+      bufpos = 0;
       while(*p) {
-        do_uart_putchar(*p);
+        if(buffering)
+          buffer[bufpos++] = *p;
+        else
+          do_uart_putchar(*p);
         p++;
       }
       is_new_line = 0;
     }
 
-    do_uart_putchar(ch);
+    if(buffering) {
+      buffer[bufpos++] = ch;
+      if(ch == '\n' || bufpos >= sizeof(buffer)) {
+        tcu_puts(buffer, bufpos);
+        bufpos = 0;
+      }
+    }
+    else
+      do_uart_putchar(ch);
 
     if(ch == '\n')
       is_new_line = 1;
@@ -136,6 +203,8 @@ static void uart_prop(const struct fdt_scan_prop *prop, void *extra)
   } else if (!strcmp(prop->name, "reg")) {
     fdt_get_address(prop->node->parent, prop->value, &scan->reg);
   }
+  if (!strcmp(prop->name, "nobuf"))
+    buffering = 0;
 }
 
 static void uart_done(const struct fdt_scan_node *node, void *extra)
