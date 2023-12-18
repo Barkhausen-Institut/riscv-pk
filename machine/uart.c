@@ -9,7 +9,6 @@ volatile uint32_t* uart;
 
 #define ENV_START 0x10001000
 #define MMIO_UNPRIV_ADDR 0xf0000000
-#define TOTAL_EPS (is_gem5() ? 192 : 128)
 #define EXT_REGS 3
 #define UNPRIV_REGS 6
 #define EP_REGS 3
@@ -56,7 +55,7 @@ static void tcu_puts(const char *str, size_t len)
     aligned_str = aligned_buf;
   }
 
-  regCount = EXT_REGS + UNPRIV_REGS + TOTAL_EPS * EP_REGS;
+  regCount = EXT_REGS + UNPRIV_REGS;
   buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
   rstr = (const Reg *)(aligned_str);
   end = (const Reg *)(aligned_str + len);
@@ -94,7 +93,7 @@ void tcu_putchar(uint8_t c)
   size_t regCount;
   volatile Reg *buffer;
 
-  regCount = EXT_REGS + UNPRIV_REGS + TOTAL_EPS * EP_REGS;
+  regCount = EXT_REGS + UNPRIV_REGS;
   buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
   *buffer = c;
 
