@@ -9,9 +9,7 @@ volatile uint32_t* uart;
 
 #define ENV_START 0x10001000
 #define MMIO_UNPRIV_ADDR 0xf0000000
-#define EXT_REGS 5
 #define UNPRIV_REGS 6
-#define EP_REGS 3
 #define PRINT_REGS 32
 #define UNPRIV_REG_TIME 0x4
 #define UNPRIV_REG_PRINT 0x5
@@ -21,19 +19,37 @@ typedef unsigned long long Reg;
 static int buffering = 1;
 static uint64_t last_putchar = 0;
 
-static inline void write_unpriv_reg(unsigned int index, Reg val)
+static inline Reg major_version()
 {
-  *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index) = val;
-}
-
-static inline Reg read_unpriv_reg(unsigned int index)
-{
-  return *((volatile Reg*)MMIO_UNPRIV_ADDR + EXT_REGS + index);
+  return (*((volatile Reg*)MMIO_UNPRIV_ADDR) >> 32) & 0xFFFF;
 }
 
 static inline int is_gem5()
 {
   return *((uint64_t*)ENV_START) == 0;
+}
+
+static inline size_t ext_regs()
+{
+	return major_version() < 3 ? 3 : 5;
+}
+
+static inline size_t print_reg_offset()
+{
+  if (major_version() < 3)
+    return ext_regs() + UNPRIV_REGS + (is_gem5() ? 192 : 128) * 3;
+  else
+    return ext_regs() + UNPRIV_REGS;
+}
+
+static inline void write_unpriv_reg(unsigned int index, Reg val)
+{
+  *((volatile Reg*)MMIO_UNPRIV_ADDR + ext_regs() + index) = val;
+}
+
+static inline Reg read_unpriv_reg(unsigned int index)
+{
+  return *((volatile Reg*)MMIO_UNPRIV_ADDR + ext_regs() + index);
 }
 
 static void tcu_puts(const char *str, size_t len)
@@ -55,7 +71,7 @@ static void tcu_puts(const char *str, size_t len)
     aligned_str = aligned_buf;
   }
 
-  regCount = EXT_REGS + UNPRIV_REGS;
+  regCount = print_reg_offset();
   buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
   rstr = (const Reg *)(aligned_str);
   end = (const Reg *)(aligned_str + len);
@@ -93,7 +109,7 @@ void tcu_putchar(uint8_t c)
   size_t regCount;
   volatile Reg *buffer;
 
-  regCount = EXT_REGS + UNPRIV_REGS;
+  regCount = print_reg_offset();
   buffer = (volatile Reg *)MMIO_UNPRIV_ADDR + regCount;
   *buffer = c;
 
